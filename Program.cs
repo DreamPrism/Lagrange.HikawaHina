@@ -6,20 +6,24 @@ using Lagrange.Core.Internal.Event.EventArg;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lagrange.Core.Internal.Event;
+using Lagrange.HikawaHina.Config;
 
 namespace Lagrange.HikawaHina;
-class Program
+
+internal class Program
 {
-    // private const string CONFIG_PATH = "appsettings.json";
-    private static readonly string BotFilesPath = "bot";
+    private const string BotFilesPath = "bot";
     private static string DeviceInfoPath => Path.Combine(BotFilesPath, "device.json");
     private static string KeyStorePath => Path.Combine(BotFilesPath, "keystore.json");
 
     private static BotDeviceInfo _deviceInfo;
     private static BotKeystore _keyStore;
     private static BotContext _bot;
+    private static readonly MessageHandler handler = new();
 
-    private static readonly LogLevel _defaultLogLevel = LogLevel.Information;
+    private const LogLevel _defaultLogLevel = LogLevel.Information;
+
     private static void InitBotInfo()
     {
         if (!Directory.Exists(BotFilesPath))
@@ -34,6 +38,7 @@ class Program
                 info = BotDeviceInfo.GenerateInfo();
                 File.WriteAllText(DeviceInfoPath, JsonSerializer.Serialize(info));
             }
+
             _deviceInfo = info;
         }
 
@@ -44,15 +49,29 @@ class Program
                 new JsonSerializerOptions() { ReferenceHandler = ReferenceHandler.Preserve });
             if (keyStore == null)
             {
-                keyStore = new();
+                keyStore = new BotKeystore();
                 File.WriteAllText(KeyStorePath, JsonSerializer.Serialize(keyStore));
             }
+
             _keyStore = keyStore;
         }
     }
+
+    private static void InitBotFiles()
+    {
+        Configuration.Register<LocalDataConfiguration>();
+
+        if (!Directory.Exists(Configuration.ConfigPath)) Directory.CreateDirectory(Configuration.ConfigPath);
+        if (!Directory.Exists("imagecache")) Directory.CreateDirectory("imagecache");
+        if (!Directory.Exists("textcache")) Directory.CreateDirectory("textcache");
+
+        if (!File.Exists("dx.status")) File.WriteAllText("dx.status", "false");
+        Configuration.LoadAll();
+    }
+
     private static void InitBot()
     {
-        _bot = BotFactory.Create(new()
+        _bot = BotFactory.Create(new BotConfig
         {
             UseIPv6Network = false,
             GetOptimumServer = true,
@@ -61,33 +80,74 @@ class Program
             CustomSignProvider = new LagrangeSignProvider(),
         }, _deviceInfo, _keyStore);
 
-        _bot.Invoker.OnBotLogEvent += (context, @event) =>
+        _bot.Invoker.OnBotLogEvent += (context, e) =>
         {
-            if (@event.Level >= _defaultLogLevel)
-            {
-                ChangeColorByTitle(@event.Level);
-                Console.WriteLine(@event.ToString());
-            }
+            if (e.Level < _defaultLogLevel) return;
+            LogBotEvent(context, e, e.EventMessage, e.Level);
         };
 
-        _bot.Invoker.OnBotOnlineEvent += (context, @event) =>
+        _bot.Invoker.OnBotCaptchaEvent += (_, e) =>
         {
-            Console.WriteLine(@event.ToString());
+            ChangeColorByTitle(LogLevel.Information);
+            Console.WriteLine($"Captcha Url: {e.Url}");
+            Console.WriteLine("Please input ticket:");
+            var captcha = Console.ReadLine();
+            Console.WriteLine("Please input randomString:");
+            var randStr = Console.ReadLine();
+            if (captcha != null && randStr != null)
+                _bot.SubmitCaptcha(captcha, randStr);
+        };
+
+        _bot.Invoker.OnBotOnlineEvent += (context, e) =>
+        {
+            LogBotEvent(context, e, e.EventMessage);
             SaveKeystore(_bot.UpdateKeystore());
         };
+
+        _bot.Invoker.OnGroupMessageReceived += (context, e) =>
+        {
+            LogBotEvent(context, e, $"{e.Chain.ToPreviewString()}");
+        };
+        _bot.Invoker.OnGroupMessageReceived += async (context, e) => await handler.OnGroupMessage(context, e);
+
+        _bot.Invoker.OnGroupMemberIncreaseEvent += (context, e) =>
+        {
+            LogBotEvent(context, e, $"New user({e.MemberUin}) joined group {e.GroupUin}.");
+        };
+        _bot.Invoker.OnGroupMemberIncreaseEvent +=
+            async (context, e) => await MessageHandler.OnGroupMemberIncrease(context, e);
     }
+
     private static void SaveKeystore(BotKeystore keystore) =>
         File.WriteAllText(KeyStorePath, JsonSerializer.Serialize(keystore));
-    static async Task Main(string[] args)
+
+    private static async Task Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         Console.InputEncoding = Encoding.UTF8;
 
         InitBotInfo();
+        InitBotFiles();
         InitBot();
-
-        await _bot.LoginByPassword();
+        var success=await _bot.LoginByPassword();
+        if (!success)
+        {
+            var qrCode = await _bot.FetchQrCode();
+            if (qrCode != null)
+            {
+                await File.WriteAllBytesAsync("qr.png", qrCode.Value.QrCode);
+                await _bot.LoginByQrCode();
+            }
+        }
     }
+
+    private static void LogBotEvent(BotContext context, EventBase e, string message,
+        LogLevel level = LogLevel.Information)
+    {
+        ChangeColorByTitle(level);
+        Console.WriteLine($"[{context.BotUin}][{e.EventTime:yyyy-MM-dd HH:mm:ss}]{message}");
+    }
+
     private static void ChangeColorByTitle(LogLevel level) => Console.ForegroundColor = level switch
     {
         LogLevel.Debug => ConsoleColor.White,
