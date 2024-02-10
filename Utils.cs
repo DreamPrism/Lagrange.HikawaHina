@@ -103,7 +103,7 @@ internal static class Utils
         }
     }
 
-    private static void ChangeColorByTitle(LogLevel level) => Console.ForegroundColor = level switch
+    public static void ChangeColorByTitle(LogLevel level) => Console.ForegroundColor = level switch
     {
         LogLevel.Debug => ConsoleColor.White,
         LogLevel.Verbose => ConsoleColor.DarkGray,
@@ -113,7 +113,7 @@ internal static class Utils
         _ => Console.ForegroundColor
     };
 
-    private static void Log(LogLevel level, string s)
+    public static void Log(LogLevel level, string s)
     {
         ChangeColorByTitle(level);
         Console.WriteLine(s);

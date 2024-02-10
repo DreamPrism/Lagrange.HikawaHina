@@ -88,7 +88,7 @@ internal class Program
 
         _bot.Invoker.OnBotCaptchaEvent += (_, e) =>
         {
-            ChangeColorByTitle(LogLevel.Information);
+            Utils.ChangeColorByTitle(LogLevel.Information);
             Console.WriteLine($"Captcha Url: {e.Url}");
             Console.WriteLine("Please input ticket:");
             var captcha = Console.ReadLine();
@@ -129,7 +129,7 @@ internal class Program
         InitBotInfo();
         InitBotFiles();
         InitBot();
-        var success=await _bot.LoginByPassword();
+        var success = await _bot.LoginByPassword();
         if (!success)
         {
             var qrCode = await _bot.FetchQrCode();
@@ -144,17 +144,7 @@ internal class Program
     private static void LogBotEvent(BotContext context, EventBase e, string message,
         LogLevel level = LogLevel.Information)
     {
-        ChangeColorByTitle(level);
+        Utils.ChangeColorByTitle(level);
         Console.WriteLine($"[{context.BotUin}][{e.EventTime:yyyy-MM-dd HH:mm:ss}]{message}");
     }
-
-    private static void ChangeColorByTitle(LogLevel level) => Console.ForegroundColor = level switch
-    {
-        LogLevel.Debug => ConsoleColor.White,
-        LogLevel.Verbose => ConsoleColor.DarkGray,
-        LogLevel.Information => ConsoleColor.Blue,
-        LogLevel.Warning => ConsoleColor.Yellow,
-        LogLevel.Fatal => ConsoleColor.Red,
-        _ => Console.ForegroundColor
-    };
 }
