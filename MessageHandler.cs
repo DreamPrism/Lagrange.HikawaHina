@@ -30,7 +30,7 @@ internal class MessageHandler
 
     private readonly HashSet<string> StampKeywords = new()
     {
-        "hina可爱", "hina老婆", "hina辛苦了"
+        "hina可爱", "hina老婆", "hina辛苦了", "日菜可爱", "日菜老婆", "日菜辛苦了"
     };
 
     private readonly HashSet<int> Tiers = new()
